@@ -61,8 +61,10 @@ func (a *AVR) listenTelnet() {
 	for {
 		a.telnet, err = telnet.DialTimeout("tcp", telnetHost, 5*time.Second)
 		if err != nil {
-			logger.WithError(err).Error("failed to connect to telnet")
-			time.Sleep(10 * time.Second)
+			// this is set to info because if the receiver is powered down
+			// is can spam logs
+			logger.WithError(err).Info("failed to connect to telnet")
+			time.Sleep(5 * time.Second)
 			continue
 		}
 		logger.Debug("telnet connected")
@@ -96,17 +98,20 @@ func parseData(data string) Event {
 	}
 
 	if strings.HasPrefix(data, "CV") {
-		typ += data[:2]
-		data = data[2:]
 		t, d := parseCVCmd(data)
 		typ += t
 		data = d
 		normalCmd = false
 	}
 
+	if strings.HasPrefix(data, "MV") {
+		t, d := parseMVCmd(data)
+		typ += t
+		data = d
+		normalCmd = false
+	}
+
 	if strings.HasPrefix(data, "PS") {
-		typ += data[:2]
-		data = data[2:]
 		t, d := parsePSCmd(data)
 		typ += t
 		data = d
@@ -130,7 +135,7 @@ func parseCVCmd(data string) (string, string) {
 }
 
 func parsePSCmd(data string) (string, string) {
-	if strings.HasPrefix(data, "MODE") || strings.HasPrefix(data, "MULTEQ") {
+	if strings.HasPrefix(data, "PSMODE") || strings.HasPrefix(data, "PSMULTEQ") {
 		parts := strings.Split(data, ":")
 		typ := parts[0]
 		data = parts[1]
@@ -141,6 +146,16 @@ func parsePSCmd(data string) (string, string) {
 	typ := parts[0]
 	data = strings.Join(parts[1:], " ")
 	return typ, data
+}
+
+func parseMVCmd(data string) (string, string) {
+	if strings.HasPrefix(data, "MVMAX") {
+		parts := strings.Fields(data)
+		typ := parts[0]
+		data = strings.Join(parts[1:], " ")
+		return typ, data
+	}
+	return data[:2], data[2:]
 }
 
 func (a *AVR) Command(cmd string) error {
