@@ -61,7 +61,9 @@ func (a *AVR) listenTelnet() {
 	for {
 		a.telnet, err = telnet.DialTimeout("tcp", telnetHost, 5*time.Second)
 		if err != nil {
-			logger.Error("failed to connect to telnet")
+			logger.WithError(err).Error("failed to connect to telnet")
+			time.Sleep(10 * time.Second)
+			continue
 		}
 		logger.Debug("telnet connected")
 		for {
