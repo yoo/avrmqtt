@@ -9,7 +9,7 @@ import (
 )
 
 var conf = struct {
-	AVRHost       string `flag:"avr-host" default:"denon" description:"denon avr host name"`
+	AVRHost       string `flag:"avr-host" default:"avr" description:"denon avr host name"`
 	AVRHTTPPort   string `flag:"avr-http-port" env:"AVR_HTTP_PORT" default:"80" description:"denon avr telnet port"`
 	AVRTelnetPort string `flag:"avr-telnet-port" default:"23" description:"denon avr telnet port"`
 
@@ -19,7 +19,7 @@ var conf = struct {
 	MQTTTopic    string `flag:"mqtt-topic" default:"avr" description:"mqtt topic"`
 	MQTTRetain   bool   `flag:"mqtt-retain" default:"false" description:"set retain for messages to stat/$topic/#"`
 
-	LogLevel string `flag:"log-level", default:"info" description:"log level (fatal|error|warn|info|debug)"`
+	LogLevel string `flag:"log-level" default:"info" description:"log level (fatal|error|warn|info|debug)"`
 }{}
 
 func main() {

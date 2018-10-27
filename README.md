@@ -24,13 +24,13 @@ Full usage:
 ```
 avrmqtt --help
 Usage of avrmqtt:
-      --avr-host string          denon avr host name (default "denon")
+      --avr-host string          denon avr host name (default "avr")
       --avr-http-port string     denon avr telnet port (default "80")
       --avr-telnet-port string   denon avr telnet port (default "23")
-      --log-level string         log level (fatal|error|warn|info|debug)
+      --log-level string         log level (fatal|error|warn|info|debug) (default "info")
       --mqtt-broker string         mqtt broker host name
       --mqtt-password string     mqtt user password
-      --mqtt-topic string        mqtt topic (default "denon")
+      --mqtt-topic string        mqtt topic (default "avr")
       --mqtt-user string         mqtt user name
 pflag: help requested
 
