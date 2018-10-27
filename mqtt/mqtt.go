@@ -20,7 +20,7 @@ type MQTT struct {
 }
 
 type Options struct {
-	Host     string
+	Broker   string
 	User     string
 	Password string
 	Topic    string
@@ -35,12 +35,12 @@ func New(opts *Options) (*MQTT, error) {
 		opts: opts,
 		logger: log.WithFields(log.Fields{
 			"module":      "mqtt",
-			"mqtt_broker": opts.Host,
+			"mqtt_broker": opts.Broker,
 		}),
 	}
 
 	co := mqtt.NewClientOptions()
-	co.AddBroker(opts.Host)
+	co.AddBroker(opts.Broker)
 	co.SetUsername(opts.User)
 	co.SetPassword(opts.Password)
 	co.SetOnConnectHandler(m.onConnect)

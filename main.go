@@ -13,10 +13,10 @@ var conf = struct {
 	AVRHTTPPort   string `flag:"avr-http-port" env:"AVR_HTTP_PORT" default:"80" description:"denon avr telnet port"`
 	AVRTelnetPort string `flag:"avr-telnet-port" default:"23" description:"denon avr telnet port"`
 
-	MQTTHost     string `flag:"mqtt-host" description:"mqtt host name"`
+	MQTTBroker   string `flag:"mqtt-broker" description:"mqtt host name"`
 	MQTTUser     string `flag:"mqtt-user" description:"mqtt user name"`
 	MQTTPassword string `flag:"mqtt-password" description:"mqtt user password"`
-	MQTTTopic    string `flag:"mqtt-topic" default:"denon" description:"mqtt topic"`
+	MQTTTopic    string `flag:"mqtt-topic" default:"avr" description:"mqtt topic"`
 	MQTTRetain   bool   `flag:"mqtt-retain" default:"false" description:"set retain for messages to stat/$topic/#"`
 
 	LogLevel string `flag:"log-level", default:"info" description:"log level (fatal|error|warn|info|debug)"`
@@ -45,7 +45,7 @@ func main() {
 	reciver := avr.New(avrOpts)
 
 	mqttOpts := &mqtt.Options{
-		Host:     conf.MQTTHost,
+		Broker:   conf.MQTTBroker,
 		User:     conf.MQTTUser,
 		Password: conf.MQTTPassword,
 		QoS:      1,

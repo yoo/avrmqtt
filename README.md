@@ -8,13 +8,13 @@ in the [Denon AVR control protocol](https://www.denon.de/de/product/hometheater/
 ## Usage
 Example:
 ```
-avrmqtt --avr-host avr.lan --mqtt-host broker.lan --mqtt-user fancypants --mqtt-password foobar
+avrmqtt --avr-host avr.lan --mqtt-broker broker.lan --mqtt-user fancypants --mqtt-password foobar
 ```
 
 Or with Docker:
 ```
 docker run -e AVR_HOST=avr.lan \
-  -e MQTT_HOST=broker.lan \
+  -e MQTT_BROKER=broker.lan \
   -e MQTT_USER=fancypants \
   -e MQTT_PASSWORD=foobar \
   johannweging/avrmqtt
@@ -28,7 +28,7 @@ Usage of avrmqtt:
       --avr-http-port string     denon avr telnet port (default "80")
       --avr-telnet-port string   denon avr telnet port (default "23")
       --log-level string         log level (fatal|error|warn|info|debug)
-      --mqtt-host string         mqtt host name
+      --mqtt-broker string         mqtt broker host name
       --mqtt-password string     mqtt user password
       --mqtt-topic string        mqtt topic (default "denon")
       --mqtt-user string         mqtt user name
