@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/JohannWeging/logerr"
 	"github.com/luzifer/rconfig"
 	log "github.com/sirupsen/logrus"
 
@@ -55,7 +56,8 @@ func main() {
 	}
 	_, err = mqtt.New(mqttOpts)
 	if err != nil {
-		log.WithError(err).Fatal("failed to connect to mqtt broker")
+		f := logerr.GetFields(err)
+		log.WithFields(f).WithError(err).Fatal("failed to connect to mqtt broker")
 	}
 
 	// just wait

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/JohannWeging/logerr"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/juju/errors"
 	log "github.com/sirupsen/logrus"
@@ -50,6 +51,7 @@ func New(opts *Options) (*MQTT, error) {
 	token := m.Client.Connect()
 	token.Wait()
 	err := token.Error()
+	err = logerr.WithField(err, "mqtt_broker", opts.Broker)
 	return m, errors.Annotate(err, "failed to connect to broker")
 }
 

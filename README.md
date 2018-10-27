@@ -8,13 +8,13 @@ in the [Denon AVR control protocol](https://www.denon.de/de/product/hometheater/
 ## Usage
 Example:
 ```
-avrmqtt --avr-host avr.lan --mqtt-broker broker.lan --mqtt-user fancypants --mqtt-password foobar
+avrmqtt --avr-host avr.lan --mqtt-broker tcp://broker.lan --mqtt-user fancypants --mqtt-password foobar
 ```
 
 Or with Docker:
 ```
 docker run -e AVR_HOST=avr.lan \
-  -e MQTT_BROKER=broker.lan \
+  -e MQTT_BROKER=tcp://broker.lan \
   -e MQTT_USER=fancypants \
   -e MQTT_PASSWORD=foobar \
   johannweging/avrmqtt
