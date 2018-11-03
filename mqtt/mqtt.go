@@ -38,6 +38,7 @@ func New(opts *Options) *MQTT {
 			"module":      "mqtt",
 			"mqtt_broker": opts.Broker,
 		}),
+		Events: make(chan *Event),
 	}
 
 	co := mqtt.NewClientOptions()
