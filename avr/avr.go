@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/JohannWeging/logerr"
@@ -17,14 +18,28 @@ const (
 	urlAppDirekt = "/goform/formiPhoneAppDirect.xml"
 )
 
-var longCommand = []string{"SLP", "NSA", "NSE"}
+type Event interface {
+	Type() string
+}
 
-type Event struct {
-	Type  string
-	Value string
+type ConnectEvent struct {
+	State string
+}
+
+func (c *ConnectEvent) Type() string {
+	return "connect"
+}
+
+type TelnetEvent struct {
+	Data string
+}
+
+func (t *TelnetEvent) Type() string {
+	return "telnet"
 }
 
 type AVR struct {
+	m      sync.Mutex
 	opts   *Options
 	http   *http.Client
 	telnet *telnet.Conn
@@ -68,6 +83,7 @@ func (a *AVR) listenTelnet() {
 			continue
 		}
 		logger.Debug("telnet connected")
+		a.Events <- &ConnectEvent{State: "connect"}
 		for {
 			data, err := a.telnet.ReadString('\r')
 			if err != nil {
@@ -76,89 +92,15 @@ func (a *AVR) listenTelnet() {
 			}
 			data = strings.Trim(data, " \n\r")
 			logger.WithField("data", data).Debug("recived data")
-			a.Events <- parseData(data)
+			a.Events <- &TelnetEvent{Data: data}
 		}
+		a.Events <- &ConnectEvent{State: "disconnect"}
 	}
-}
-
-func parseData(data string) Event {
-	normalCmd := true
-	typ := ""
-
-	if strings.HasPrefix(data, "Z2") {
-		typ = "Z2"
-		data = data[2:]
-	}
-	for _, lcmd := range longCommand {
-		if strings.HasPrefix(data, lcmd) {
-			typ += lcmd
-			data = data[3:]
-			normalCmd = false
-		}
-	}
-
-	if strings.HasPrefix(data, "CV") {
-		t, d := parseCVCmd(data)
-		typ += t
-		data = d
-		normalCmd = false
-	}
-
-	if strings.HasPrefix(data, "MV") {
-		t, d := parseMVCmd(data)
-		typ += t
-		data = d
-		normalCmd = false
-	}
-
-	if strings.HasPrefix(data, "PS") {
-		t, d := parsePSCmd(data)
-		typ += t
-		data = d
-		normalCmd = false
-	}
-
-	if normalCmd {
-		typ += data[:2]
-		data = data[2:]
-	}
-
-	return Event{
-		Type:  typ,
-		Value: data,
-	}
-}
-
-func parseCVCmd(data string) (string, string) {
-	parts := strings.Fields(data)
-	return parts[0], strings.Join(parts[1:], " ")
-}
-
-func parsePSCmd(data string) (string, string) {
-	if strings.HasPrefix(data, "PSMODE") || strings.HasPrefix(data, "PSMULTEQ") {
-		parts := strings.Split(data, ":")
-		typ := parts[0]
-		data = parts[1]
-		return typ, data
-	}
-
-	parts := strings.Fields(data)
-	typ := parts[0]
-	data = strings.Join(parts[1:], " ")
-	return typ, data
-}
-
-func parseMVCmd(data string) (string, string) {
-	if strings.HasPrefix(data, "MVMAX") {
-		parts := strings.Fields(data)
-		typ := parts[0]
-		data = strings.Join(parts[1:], " ")
-		return typ, data
-	}
-	return data[:2], data[2:]
 }
 
 func (a *AVR) Command(cmd string) error {
+	a.m.Lock()
+	defer a.m.Unlock()
 	err := get(a.http, a.opts.httpEndpoint, cmd)
 	err = logerr.WithFields(err,
 		logerr.Fields{
@@ -167,6 +109,7 @@ func (a *AVR) Command(cmd string) error {
 		},
 	)
 
+	time.Sleep(100 * time.Millisecond)
 	return errors.Annotate(err, "failed to send cmd")
 }
 

@@ -2,22 +2,24 @@ package mqtt
 
 import (
 	"path"
-	"strings"
 	"time"
 
 	"github.com/JohannWeging/logerr"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/juju/errors"
 	log "github.com/sirupsen/logrus"
-
-	"github.com/JohannWeging/avrmqtt/avr"
 )
 
+type Event struct {
+	Topic   string
+	Payload string
+}
+
 type MQTT struct {
-	Client     mqtt.Client
-	opts       *Options
-	logger     *log.Entry
-	disconnect chan struct{}
+	client mqtt.Client
+	opts   *Options
+	logger *log.Entry
+	Events chan *Event
 }
 
 type Options struct {
@@ -27,11 +29,9 @@ type Options struct {
 	Topic    string
 	QoS      int
 	Retain   bool
-
-	AVR *avr.AVR
 }
 
-func New(opts *Options) (*MQTT, error) {
+func New(opts *Options) *MQTT {
 	m := &MQTT{
 		opts: opts,
 		logger: log.WithFields(log.Fields{
@@ -45,14 +45,9 @@ func New(opts *Options) (*MQTT, error) {
 	co.SetUsername(opts.User)
 	co.SetPassword(opts.Password)
 	co.SetOnConnectHandler(m.onConnect)
-	co.SetConnectionLostHandler(m.connectionLost)
 
-	m.Client = mqtt.NewClient(co)
-	token := m.Client.Connect()
-	token.Wait()
-	err := token.Error()
-	err = logerr.WithField(err, "mqtt_broker", opts.Broker)
-	return m, errors.Annotate(err, "failed to connect to broker")
+	m.client = mqtt.NewClient(co)
+	return m
 }
 
 func (m *MQTT) onConnect(client mqtt.Client) {
@@ -72,12 +67,6 @@ func (m *MQTT) onConnect(client mqtt.Client) {
 	if err != nil {
 		logger.WithError(err).Error("failed to subscribe to topic: token error")
 	}
-	go m.publish()
-}
-
-func (m *MQTT) connectionLost(clien mqtt.Client, err error) {
-	m.logger.Info("disconnect from broker")
-	m.disconnect <- struct{}{}
 }
 
 func (m *MQTT) cmndHandler(client mqtt.Client, msg mqtt.Message) {
@@ -85,52 +74,49 @@ func (m *MQTT) cmndHandler(client mqtt.Client, msg mqtt.Message) {
 		m.logger.Debug("recived duplicated message")
 		return
 	}
-	_, endpoint := path.Split(msg.Topic())
-	payload := string(msg.Payload())
 
-	cmd := ""
-	if strings.HasPrefix(endpoint, "PS") || strings.HasPrefix(endpoint, "CV") {
-		if endpoint == "PSMODE" {
-			cmd = endpoint + ":" + payload
-		} else {
-			cmd = endpoint + " " + payload
-		}
-	} else {
-		cmd = endpoint + payload
-	}
-
-	m.logger.WithField("command", cmd).Debug("send command")
-	err := m.opts.AVR.Command(cmd)
-	if err != nil {
-		m.logger.WithError(err).Error("failed to forward mqtt command")
+	m.Events <- &Event{
+		Topic:   msg.Topic(),
+		Payload: string(msg.Payload()),
 	}
 }
 
-func logToken(token mqtt.Token) {
-	ok := token.WaitTimeout(1 * time.Minute)
+func (m *MQTT) Connect() (err error) {
+	logFields := log.Fields{"mqtt_broker": m.opts.Broker}
+	logerr.DeferWithFields(&err, logFields)
+	errors.DeferredAnnotatef(&err, "failed to connect to broker")
+
+	log.WithFields(logFields).Debug("connect to broker")
+	token := m.client.Connect()
+	ok := token.WaitTimeout(10 * time.Second)
 	if !ok {
-		return
+		return errors.New("connect timeout")
 	}
-	err := token.Error()
-	if err != nil {
-		log.WithError(err).Error("failed to publish message")
-	}
+	return token.Error()
 }
 
-func (m *MQTT) publish() {
+func (m *MQTT) Disconnect() {
+	m.client.Disconnect(300)
+}
 
-	for {
-		select {
-		case e := <-m.opts.AVR.Events:
-			topic := path.Join("stat", m.opts.Topic, e.Type)
-			m.logger.WithFields(log.Fields{
-				"mqtt_topic":   topic,
-				"mqtt_payload": e.Value,
-			}).Debug("publish avr event")
-			token := m.Client.Publish(topic, byte(m.opts.QoS), m.opts.Retain, e.Value)
-			go logToken(token)
-		case <-m.disconnect:
-			return
-		}
+func (m *MQTT) Publish(endpoint, payload string) (err error) {
+	topic := path.Join("cmnd", m.opts.Topic, endpoint)
+	logFields := log.Fields{"mqtt_broker": m.opts.Broker, "mqtt_topic": topic, "mqtt_payload": payload}
+	logerr.DeferWithFields(&err, logFields)
+	errors.DeferredAnnotatef(&err, "failed to publish mqtt msg")
+
+	if !m.client.IsConnected() {
+		return errors.New("not connected")
 	}
+
+	m.logger.WithFields(logFields).Debug("publish mqtt msg")
+
+	token := m.client.Publish(topic, byte(m.opts.QoS), m.opts.Retain, payload)
+
+	ok := token.WaitTimeout(10 * time.Second)
+	if !ok {
+		return errors.New("publish timeout")
+	}
+
+	return token.Error()
 }

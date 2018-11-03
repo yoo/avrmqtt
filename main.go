@@ -1,6 +1,10 @@
 package main
 
 import (
+	"path"
+	"strings"
+	"sync"
+
 	"github.com/JohannWeging/logerr"
 	"github.com/luzifer/rconfig"
 	log "github.com/sirupsen/logrus"
@@ -9,6 +13,7 @@ import (
 	"github.com/JohannWeging/avrmqtt/mqtt"
 )
 
+var logLock sync.Mutex
 var conf = struct {
 	AVRHost       string `flag:"avr-host" default:"avr" description:"denon avr host name"`
 	AVRHTTPPort   string `flag:"avr-http-port" env:"AVR_HTTP_PORT" default:"80" description:"denon avr telnet port"`
@@ -43,7 +48,7 @@ func main() {
 		TelnetPort: conf.AVRTelnetPort,
 	}
 
-	reciver := avr.New(avrOpts)
+	receiver := avr.New(avrOpts)
 
 	mqttOpts := &mqtt.Options{
 		Broker:   conf.MQTTBroker,
@@ -52,14 +57,70 @@ func main() {
 		QoS:      1,
 		Topic:    conf.MQTTTopic,
 		Retain:   conf.MQTTRetain,
-		AVR:      reciver,
 	}
-	_, err = mqtt.New(mqttOpts)
+	broker := mqtt.New(mqttOpts)
 	if err != nil {
 		f := logerr.GetFields(err)
 		log.WithFields(f).WithError(err).Fatal("failed to connect to mqtt broker")
 	}
+	run(receiver, broker)
+}
 
-	// just wait
-	select {}
+func run(receiver *avr.AVR, broker *mqtt.MQTT) {
+	for {
+		select {
+		case e := <-receiver.Events:
+			go receiverEvent(e, broker)
+		case e := <-broker.Events:
+			go brokerEvent(e, receiver)
+		}
+	}
+}
+
+func receiverEvent(event avr.Event, broker *mqtt.MQTT) {
+	var err error
+	switch e := event.(type) {
+	case *avr.ConnectEvent:
+		if e.State == "connect" {
+			err = broker.Connect()
+		} else {
+			broker.Disconnect()
+		}
+	case *avr.TelnetEvent:
+		err = telnetEvent(e, broker)
+	default:
+		panic("unreachable")
+	}
+	errLog(err, "failed to publish telnet event to mqtt")
+}
+
+func brokerEvent(event *mqtt.Event, receiver *avr.AVR) {
+	_, endpoint := path.Split(event.Topic)
+	cmd := ""
+	if strings.HasPrefix(endpoint, "PS") || strings.HasPrefix(endpoint, "CV") {
+		if endpoint == "PSMODE" {
+			cmd = endpoint + ":" + event.Payload
+		} else {
+			cmd = endpoint + " " + event.Payload
+		}
+	} else {
+		cmd = endpoint + event.Payload
+	}
+	err := receiver.Command(cmd)
+	errLog(err, "failed to send mqtt event to receiver")
+}
+
+func telnetEvent(event *avr.TelnetEvent, broker *mqtt.MQTT) error {
+	endpoint, payload := parseData(event.Data)
+	return broker.Publish(endpoint, payload)
+}
+
+func errLog(err error, msg string) {
+	if err == nil {
+		return
+	}
+	logLock.Lock()
+	defer logLock.Unlock()
+	fields := logerr.GetFields(err)
+	log.WithFields(fields).WithError(err).Error(msg)
 }
