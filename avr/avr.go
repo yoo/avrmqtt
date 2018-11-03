@@ -79,7 +79,6 @@ func (a *AVR) listenTelnet() {
 			// this is set to info because if the receiver is powered down
 			// is can spam logs
 			logger.WithError(err).Info("failed to connect to telnet")
-			time.Sleep(5 * time.Second)
 			continue
 		}
 		logger.Debug("telnet connected")
