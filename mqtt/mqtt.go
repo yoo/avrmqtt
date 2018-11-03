@@ -101,7 +101,7 @@ func (m *MQTT) Disconnect() {
 }
 
 func (m *MQTT) Publish(endpoint, payload string) (err error) {
-	topic := path.Join("cmnd", m.opts.Topic, endpoint)
+	topic := path.Join("stat", m.opts.Topic, endpoint)
 	logFields := log.Fields{"mqtt_broker": m.opts.Broker, "mqtt_topic": topic, "mqtt_payload": payload}
 	logerr.DeferWithFields(&err, logFields)
 	errors.DeferredAnnotatef(&err, "failed to publish mqtt msg")
