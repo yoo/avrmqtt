@@ -78,12 +78,14 @@ func (a *AVR) listenTelnet() {
 		if err != nil {
 			// this is set to info because if the receiver is powered down
 			// is can spam logs
+			time.Sleep(5 * time.Second)
 			logger.WithError(err).Info("failed to connect to telnet")
 			continue
 		}
 		logger.Debug("telnet connected")
 		a.Events <- &ConnectEvent{State: "connect"}
 		for {
+			a.telnet.SetReadDeadline(time.Now().Add(10 * time.Second))
 			data, err := a.telnet.ReadString('\r')
 			if err != nil {
 				logger.Errorf("failed to read form telnet")
