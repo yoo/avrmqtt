@@ -2,7 +2,6 @@ package main
 
 import (
 	"path"
-	"strings"
 	"sync"
 
 	"github.com/JohannWeging/logerr"
@@ -58,7 +57,7 @@ func main() {
 		Topic:    conf.MQTTTopic,
 		Retain:   conf.MQTTRetain,
 	}
-	broker := mqtt.New(mqttOpts)
+	broker, err := mqtt.New(mqttOpts)
 	if err != nil {
 		f := logerr.GetFields(err)
 		log.WithFields(f).WithError(err).Fatal("failed to connect to mqtt broker")
@@ -70,49 +69,23 @@ func run(receiver *avr.AVR, broker *mqtt.MQTT) {
 	for {
 		select {
 		case e := <-receiver.Events:
-			go receiverEvent(e, broker)
+			go telnetEvent(e, broker)
 		case e := <-broker.Events:
 			go brokerEvent(e, receiver)
 		}
 	}
 }
 
-func receiverEvent(event avr.Event, broker *mqtt.MQTT) {
-	var err error
-	switch e := event.(type) {
-	case *avr.ConnectEvent:
-		if e.State == "connect" {
-			err = broker.Connect()
-		} else {
-			broker.Disconnect()
-		}
-	case *avr.TelnetEvent:
-		err = telnetEvent(e, broker)
-	default:
-		panic("unreachable")
-	}
-	errLog(err, "failed to publish telnet event to mqtt")
-}
-
 func brokerEvent(event *mqtt.Event, receiver *avr.AVR) {
 	_, endpoint := path.Split(event.Topic)
-	cmd := ""
-	if strings.HasPrefix(endpoint, "PS") || strings.HasPrefix(endpoint, "CV") {
-		if endpoint == "PSMODE" {
-			cmd = endpoint + ":" + event.Payload
-		} else {
-			cmd = endpoint + " " + event.Payload
-		}
-	} else {
-		cmd = endpoint + event.Payload
-	}
-	err := receiver.Command(cmd)
+	err := receiver.Command(endpoint, event.Payload)
 	errLog(err, "failed to send mqtt event to receiver")
 }
 
-func telnetEvent(event *avr.TelnetEvent, broker *mqtt.MQTT) error {
+func telnetEvent(event *avr.Event, broker *mqtt.MQTT) {
 	endpoint, payload := parseData(event.Data)
-	return broker.Publish(endpoint, payload)
+	err := broker.Publish(endpoint, payload)
+	errLog(err, "failed to publish telnet event to mqtt")
 }
 
 func errLog(err error, msg string) {

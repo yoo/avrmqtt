@@ -34,11 +34,15 @@ type Token interface {
 	Wait() bool
 	WaitTimeout(time.Duration) bool
 	Error() error
+}
+
+type TokenErrorSetter interface {
 	setError(error)
 }
 
 type tokenCompletor interface {
 	Token
+	TokenErrorSetter
 	flowComplete()
 }
 
@@ -93,8 +97,6 @@ func (b *baseToken) Error() error {
 }
 
 func (b *baseToken) setError(e error) {
-	b.m.Lock()
-	defer b.m.Unlock()
 	b.err = e
 	b.flowComplete()
 }
@@ -119,7 +121,8 @@ func newToken(tType byte) tokenCompletor {
 //required to provide information about calls to Connect()
 type ConnectToken struct {
 	baseToken
-	returnCode byte
+	returnCode     byte
+	sessionPresent bool
 }
 
 //ReturnCode returns the acknowlegement code in the connack sent
@@ -128,6 +131,14 @@ func (c *ConnectToken) ReturnCode() byte {
 	c.m.RLock()
 	defer c.m.RUnlock()
 	return c.returnCode
+}
+
+//SessionPresent returns a bool representing the value of the
+//session present field in the connack sent in response to a Connect()
+func (c *ConnectToken) SessionPresent() bool {
+	c.m.RLock()
+	defer c.m.RUnlock()
+	return c.sessionPresent
 }
 
 //PublishToken is an extension of Token containing the extra fields

@@ -10,15 +10,15 @@
   revision = "5e4972caecf8c60502440a69c298b721ca2b216b"
 
 [[projects]]
-  digest = "1:aba48b6c6600a43db48da14ae43338220b2cfc262a0e064b29085fbf75ed5b68"
+  branch = "master"
+  digest = "1:f6488aa126edbe5e42fec655f0f079799a36d18f32399f437fc2bb59fb3ff732"
   name = "github.com/eclipse/paho.mqtt.golang"
   packages = [
     ".",
     "packets",
   ]
   pruneopts = "NUT"
-  revision = "36d01c2b4cbeb3d2a12063e4880ce30800af9560"
-  version = "v1.1.1"
+  revision = "572c08dcbd8b1302de24c859ed16d86b8c11d0f1"
 
 [[projects]]
   branch = "master"
@@ -45,12 +45,12 @@
   version = "v2.2.0"
 
 [[projects]]
-  digest = "1:ecf78eacf406c42f07f66d6b79fda24d2b92dc711bfd0760d0c931678f9621fe"
+  digest = "1:d848e2bdc690ea54c4b49894b67a05db318a97ee6561879b814c2c1f82f61406"
   name = "github.com/sirupsen/logrus"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "ad15b42461921f1fb3529b058c6786c6a45d5162"
-  version = "v1.1.1"
+  revision = "bcd833dfe83d3cebad139e4a29ed79cb2318bf95"
+  version = "v1.2.0"
 
 [[projects]]
   digest = "1:9d8420bbf131d1618bde6530af37c3799340d3762cc47210c1d9532a4c3a2779"
@@ -74,7 +74,7 @@
   name = "golang.org/x/crypto"
   packages = ["ssh/terminal"]
   pruneopts = "NUT"
-  revision = "e84da0312774c21d64ee2317962ef669b27ffb41"
+  revision = "4d3f4d9ffa16a13f451c3b2999e9c49e9750bf06"
 
 [[projects]]
   branch = "master"
@@ -86,18 +86,18 @@
     "websocket",
   ]
   pruneopts = "NUT"
-  revision = "9b4f9f5ad5197c79fd623a3638e70d8b26cef344"
+  revision = "c10e9556a7bc0e7c942242b606f0acf024ad5d6a"
 
 [[projects]]
   branch = "master"
-  digest = "1:490cc87db0a73882fcd13661bd48a64574f04f0e46d37fcdde33aade70787838"
+  digest = "1:3bcf6eb3757db3e22c41d212f886b86d0f940f86e1af85b13cd31122ac341193"
   name = "golang.org/x/sys"
   packages = [
     "unix",
     "windows",
   ]
   pruneopts = "NUT"
-  revision = "95b1ffbd15a57cc5abb3f04402b9e8ec0016a52c"
+  revision = "9b800f95dbbc54abff0acf7ee32d88ba4e328c89"
 
 [[projects]]
   branch = "v2"

@@ -2,6 +2,7 @@ package avr
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -18,24 +19,8 @@ const (
 	urlAppDirekt = "/goform/formiPhoneAppDirect.xml"
 )
 
-type Event interface {
-	Type() string
-}
-
-type ConnectEvent struct {
-	State string
-}
-
-func (c *ConnectEvent) Type() string {
-	return "connect"
-}
-
-type TelnetEvent struct {
+type Event struct {
 	Data string
-}
-
-func (t *TelnetEvent) Type() string {
-	return "telnet"
 }
 
 type AVR struct {
@@ -43,7 +28,9 @@ type AVR struct {
 	opts   *Options
 	http   *http.Client
 	telnet *telnet.Conn
-	Events chan Event
+	Events chan *Event
+	state  map[string]string
+	logger *log.Entry
 }
 
 type Options struct {
@@ -51,83 +38,107 @@ type Options struct {
 	HttpPort     string
 	TelnetPort   string
 	httpEndpoint string
+	telnetHost   string
 }
 
 func New(opts *Options) *AVR {
 	opts.httpEndpoint = fmt.Sprintf("http://%s:%s%s", opts.Host, opts.HttpPort, urlAppDirekt)
+	opts.telnetHost = fmt.Sprintf("%s:%s", opts.Host, opts.TelnetPort)
 	avr := &AVR{
 		opts:   opts,
 		http:   http.DefaultClient,
-		Events: make(chan Event),
+		Events: make(chan *Event),
+		state:  make(map[string]string),
 	}
+	avr.logger = log.WithFields(avr.logFields())
 
 	go avr.listenTelnet()
 	return avr
 }
 
-func (a *AVR) listenTelnet() {
-	telnetHost := fmt.Sprintf("%s:%s", a.opts.Host, a.opts.TelnetPort)
-	fields := log.Fields{
-		"telnet_host": telnetHost,
-		"module":      "telnet",
-	}
-	logger := log.WithFields(fields)
-	var err error
-	for {
-		a.telnet, err = telnet.DialTimeout("tcp", telnetHost, 5*time.Second)
-		if err != nil {
-			// this is set to info because if the receiver is powered down
-			// is can spam logs
-			time.Sleep(5 * time.Second)
-			logger.WithError(err).Info("failed to connect to telnet")
-			continue
-		}
-		logger.Debug("telnet connected")
-		a.Events <- &ConnectEvent{State: "connect"}
-		for {
-			a.telnet.SetReadDeadline(time.Now().Add(10 * time.Second))
-			data, err := a.telnet.ReadString('\r')
-			if err != nil {
-				logger.Errorf("failed to read form telnet")
-				break
-			}
-			data = strings.Trim(data, " \n\r")
-			logger.WithField("data", data).Debug("recived data")
-			a.Events <- &TelnetEvent{Data: data}
-		}
-		a.Events <- &ConnectEvent{State: "disconnect"}
+func (a *AVR) logFields() map[string]interface{} {
+	return map[string]interface{}{
+		"module": "avr",
+		"http":   a.opts.httpEndpoint,
+		"telnet": a.opts.telnetHost,
 	}
 }
 
-func (a *AVR) Command(cmd string) error {
+func (a *AVR) listenTelnet() {
+	var err error
+	for {
+		a.telnet, err = telnet.DialTimeout("tcp", a.opts.telnetHost, 5*time.Second)
+		if err != nil {
+			// this is set to info because if the receiver is powered down
+			// is can spam logs
+			a.logger.WithError(err).Info("failed to connect to telnet")
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		if err = a.telnet.Conn.(*net.TCPConn).SetKeepAlive(true); err != nil {
+			a.logger.WithError(err).Error("failed to enable tcp keep alive")
+		}
+		if err = a.telnet.Conn.(*net.TCPConn).SetKeepAlivePeriod(5 * time.Second); err != nil {
+			a.logger.WithError(err).Error("failed to set tcp keep alive period")
+		}
+		a.logger.Debug("telnet connected")
+		go a.setState()
+		for {
+			data, err := a.telnet.ReadString('\r')
+			if err != nil {
+				a.logger.WithError(err).Errorf("failed to read form telnet")
+				break
+			}
+			data = strings.Trim(data, " \n\r")
+			a.logger.WithField("data", data).Debug("recived data")
+			a.Events <- &Event{Data: data}
+		}
+	}
+}
+
+func (a *AVR) setState() {
+	for key, value := range a.state {
+		if err := a.Command(key, value); err != nil {
+			fields := logerr.GetFields(err)
+			log.WithFields(fields).WithError(err).Error("failed to send telnet command")
+		}
+	}
+}
+
+func (a *AVR) Command(endpoint, payload string) error {
 	a.m.Lock()
 	defer a.m.Unlock()
+	a.state[endpoint] = payload
+	cmd := ""
+	if strings.HasPrefix(endpoint, "PS") || strings.HasPrefix(endpoint, "CV") {
+		if endpoint == "PSMODE" {
+			cmd = endpoint + ":" + payload
+		} else {
+			cmd = endpoint + " " + payload
+		}
+	} else {
+		cmd = endpoint + payload
+	}
+	a.logger.WithField("cmd", cmd).Debug("send http command")
 	err := get(a.http, a.opts.httpEndpoint, cmd)
-	err = logerr.WithFields(err,
-		logerr.Fields{
-			"cmd":    cmd,
-			"module": "telnet",
-		},
-	)
-
+	if err != nil {
+		lf := a.logFields()
+		lf["cmd"] = cmd
+		err = logerr.WithFields(err, lf)
+		return errors.Annotate(err, "failed to send cmd")
+	}
 	time.Sleep(100 * time.Millisecond)
-	return errors.Annotate(err, "failed to send cmd")
+	return nil
 }
 
 func get(client *http.Client, endpoint string, cmd string) error {
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
-		err = logerr.WithField(err, "url", endpoint)
-		err = errors.Annotate(err, "failed to create request")
-		return err
+		return errors.Annotate(err, "failed to create request")
 	}
 
 	// add the command as empty parameter
 	req.URL.RawQuery = url.QueryEscape(cmd)
-	log.WithFields(log.Fields{
-		"module": "telnet",
-		"url":    req.URL.String(),
-	}).Debug("send http request")
 	_, err = client.Do(req)
 	err = logerr.WithField(err, "url", req.URL.String())
 	return errors.Annotate(err, "failed to do request")

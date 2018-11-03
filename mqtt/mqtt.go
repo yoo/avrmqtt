@@ -31,7 +31,7 @@ type Options struct {
 	Retain   bool
 }
 
-func New(opts *Options) *MQTT {
+func New(opts *Options) (*MQTT, error) {
 	m := &MQTT{
 		opts: opts,
 		logger: log.WithFields(log.Fields{
@@ -40,15 +40,33 @@ func New(opts *Options) *MQTT {
 		}),
 		Events: make(chan *Event),
 	}
+	m.logger = log.WithFields(m.logFields())
+
+	var err error
+	logerr.DeferWithFields(&err, m.logFields())
+	errors.DeferredAnnotatef(&err, "failed to connect to broker")
 
 	co := mqtt.NewClientOptions()
 	co.AddBroker(opts.Broker)
 	co.SetUsername(opts.User)
 	co.SetPassword(opts.Password)
 	co.SetOnConnectHandler(m.onConnect)
+	co.SetAutoReconnect(true)
 
 	m.client = mqtt.NewClient(co)
-	return m
+	token := m.client.Connect()
+	ok := token.WaitTimeout(10 * time.Second)
+	if !ok {
+		return nil, errors.New("connect timeout")
+	}
+	return m, token.Error()
+}
+
+func (m *MQTT) logFields() map[string]interface{} {
+	return map[string]interface{}{
+		"module": "mqtt",
+		"broker": m.opts.Broker,
+	}
 }
 
 func (m *MQTT) onConnect(client mqtt.Client) {
@@ -62,11 +80,13 @@ func (m *MQTT) onConnect(client mqtt.Client) {
 	if !token.WaitTimeout(10 * time.Second) {
 		err := errors.New("token timeout")
 		logger.WithError(err).Error("failed to subscribe to topic: reached timeout")
+		return
 	}
 
 	err := token.Error()
 	if err != nil {
 		logger.WithError(err).Error("failed to subscribe to topic: token error")
+		return
 	}
 }
 
@@ -75,6 +95,10 @@ func (m *MQTT) cmndHandler(client mqtt.Client, msg mqtt.Message) {
 		m.logger.Debug("recived duplicated message")
 		return
 	}
+	m.logger.WithFields(log.Fields{
+		"topic":   msg.Topic(),
+		"payload": string(msg.Payload()),
+	}).Debug("recived cmnd msg")
 
 	m.Events <- &Event{
 		Topic:   msg.Topic(),
@@ -82,27 +106,11 @@ func (m *MQTT) cmndHandler(client mqtt.Client, msg mqtt.Message) {
 	}
 }
 
-func (m *MQTT) Connect() (err error) {
-	logFields := log.Fields{"mqtt_broker": m.opts.Broker}
-	logerr.DeferWithFields(&err, logFields)
-	errors.DeferredAnnotatef(&err, "failed to connect to broker")
-
-	log.WithFields(logFields).Debug("connect to broker")
-	token := m.client.Connect()
-	ok := token.WaitTimeout(10 * time.Second)
-	if !ok {
-		return errors.New("connect timeout")
-	}
-	return token.Error()
-}
-
-func (m *MQTT) Disconnect() {
-	m.client.Disconnect(300)
-}
-
 func (m *MQTT) Publish(endpoint, payload string) (err error) {
 	topic := path.Join("stat", m.opts.Topic, endpoint)
-	logFields := log.Fields{"mqtt_broker": m.opts.Broker, "mqtt_topic": topic, "mqtt_payload": payload}
+	logFields := m.logFields()
+	logFields["topic"] = topic
+	logFields["payload"] = payload
 	logerr.DeferWithFields(&err, logFields)
 	errors.DeferredAnnotatef(&err, "failed to publish mqtt msg")
 
