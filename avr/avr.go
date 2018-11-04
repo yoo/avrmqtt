@@ -97,6 +97,7 @@ func (a *AVR) listenTelnet() {
 }
 
 func (a *AVR) setState() {
+	time.Sleep(3 * time.Second)
 	for key, value := range a.state {
 		if err := a.Command(key, value); err != nil {
 			fields := logerr.GetFields(err)
