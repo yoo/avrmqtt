@@ -1,18 +1,20 @@
 FROM golang:alpine AS builder
 
-COPY . /go/src/github.com/JohannWeging/avrmqtt
-WORKDIR /go/src/github.com/JohannWeging/avrmqtt
+COPY . /go/src/github.com/yoo/avrmqtt
+WORKDIR /go/src/github.com/yoo/avrmqtt
 
 RUN set -x \
- && go install github.com/JohannWeging/avrmqtt
+ && go install -mod=vendor github.com/yoo/avrmqtt
 
-FROM johannweging/base-alpine:latest
+FROM alpine:latest
 
 COPY --from=builder /go/bin/avrmqtt /usr/bin
 
 RUN set -x \
- && createuser avrmqtt
+ && apk add --update --no-cache dumb-init ca-certificates \
+ && adduser -D avrmqtt
  
-ENTRYPOINT ["/usr/bin/dumb-init", "--"]
-CMD ["gosu", "avrmqtt", "avrmqtt"]
+USER avrmqtt
 
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["/usr/bin/avrmqtt"]
