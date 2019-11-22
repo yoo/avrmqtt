@@ -1,5 +1,3 @@
-[![Build Status](https://ci.sysexit.com/api/badges/JohannWeging/avrmqtt/status.svg)](https://ci.sysexit.com/JohannWeging/avrmqtt) [![Docker Hub](https://img.shields.io/badge/docker-container-blue.svg?longCache=true&style=flat-square)](https://hub.docker.com/r/johannweging/avrmqtt) [![GitHub](https://img.shields.io/badge/github-repo-blue.svg?longCache=true&style=flat-square)](https://github.com/JohannWeging/avrmqtt)
-
 # avrmqtt
 avrmqtt Connects a Denon AVR Receiver to a MQTT Brooker.
 The MQTT implementation supports most of the telnet commands specified
@@ -17,7 +15,7 @@ docker run -e AVR_HOST=avr.lan \
   -e MQTT_BROKER=tcp://broker.lan \
   -e MQTT_USER=fancypants \
   -e MQTT_PASSWORD=foobar \
-  johannweging/avrmqtt
+  docker.pkg.github.com/yoo/avrmqtt/avrmqtt:latest
 ```
 
 Full usage:
