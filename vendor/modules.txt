@@ -1,0 +1,23 @@
+# github.com/eclipse/paho.mqtt.golang v1.2.0
+github.com/eclipse/paho.mqtt.golang
+github.com/eclipse/paho.mqtt.golang/packets
+# github.com/konsorten/go-windows-terminal-sequences v1.0.1
+github.com/konsorten/go-windows-terminal-sequences
+# github.com/luzifer/rconfig v2.2.0+incompatible
+github.com/luzifer/rconfig
+# github.com/sirupsen/logrus v1.4.2
+github.com/sirupsen/logrus
+# github.com/spf13/pflag v1.0.5
+github.com/spf13/pflag
+# github.com/ziutek/telnet v0.0.0-20180329124119-c3b780dc415b
+github.com/ziutek/telnet
+# golang.org/x/net v0.0.0-20191119073136-fc4aabc6c914
+golang.org/x/net/internal/socks
+golang.org/x/net/proxy
+golang.org/x/net/websocket
+# golang.org/x/sys v0.0.0-20190422165155-953cdadca894
+golang.org/x/sys/unix
+# gopkg.in/validator.v2 v2.0.0-20191107172027-c3144fdedc21
+gopkg.in/validator.v2
+# gopkg.in/yaml.v2 v2.2.7
+gopkg.in/yaml.v2

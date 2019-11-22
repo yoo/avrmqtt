@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -94,8 +95,8 @@ type Client interface {
 
 // client implements the Client interface
 type client struct {
-	lastSent        int64
-	lastReceived    int64
+	lastSent        atomic.Value
+	lastReceived    atomic.Value
 	pingOutstanding int32
 	status          uint32
 	sync.RWMutex
@@ -299,8 +300,8 @@ func (c *client) Connect() Token {
 
 		if c.options.KeepAlive != 0 {
 			atomic.StoreInt32(&c.pingOutstanding, 0)
-			atomic.StoreInt64(&c.lastReceived, time.Now().Unix())
-			atomic.StoreInt64(&c.lastSent, time.Now().Unix())
+			c.lastReceived.Store(time.Now())
+			c.lastSent.Store(time.Now())
 			c.workers.Add(1)
 			go keepalive(c)
 		}
@@ -343,11 +344,13 @@ func (c *client) reconnect() {
 		sleep = time.Duration(1 * time.Second)
 	)
 
-	for rc != 0 && c.status != disconnected {
+	for rc != 0 && atomic.LoadUint32(&c.status) != disconnected {
 		for _, broker := range c.options.Servers {
 			cm := newConnectMsgFromOptions(&c.options, broker)
 			DEBUG.Println(CLI, "about to write new connect msg")
+			c.Lock()
 			c.conn, err = openConnection(broker, c.options.TLSConfig, c.options.ConnectTimeout, c.options.HTTPHeaders)
+			c.Unlock()
 			if err == nil {
 				DEBUG.Println(CLI, "socket connected to broker")
 				switch c.options.ProtocolVersion {
@@ -409,8 +412,8 @@ func (c *client) reconnect() {
 
 	if c.options.KeepAlive != 0 {
 		atomic.StoreInt32(&c.pingOutstanding, 0)
-		atomic.StoreInt64(&c.lastReceived, time.Now().Unix())
-		atomic.StoreInt64(&c.lastSent, time.Now().Unix())
+		c.lastReceived.Store(time.Now())
+		c.lastSent.Store(time.Now())
 		c.workers.Add(1)
 		go keepalive(c)
 	}
@@ -475,7 +478,6 @@ func (c *client) Disconnect(quiesce uint) {
 	} else {
 		WARN.Println(CLI, "Disconnect() called but not connected (disconnected/reconnecting)")
 		c.setConnected(disconnected)
-		return
 	}
 
 	c.disconnect()
@@ -501,7 +503,7 @@ func (c *client) internalConnLost(err error) {
 		c.closeStop()
 		c.conn.Close()
 		c.workers.Wait()
-		if c.options.CleanSession {
+		if c.options.CleanSession && !c.options.AutoReconnect {
 			c.messageIds.cleanUp()
 		}
 		if c.options.AutoReconnect {
@@ -529,6 +531,19 @@ func (c *client) closeStop() {
 	}
 }
 
+func (c *client) closeStopRouter() {
+	c.Lock()
+	defer c.Unlock()
+	select {
+	case <-c.stopRouter:
+		DEBUG.Println("In disconnect and stop channel is already closed")
+	default:
+		if c.stopRouter != nil {
+			close(c.stopRouter)
+		}
+	}
+}
+
 func (c *client) closeConn() {
 	c.Lock()
 	defer c.Unlock()
@@ -542,7 +557,7 @@ func (c *client) disconnect() {
 	c.closeConn()
 	c.workers.Wait()
 	c.messageIds.cleanUp()
-	close(c.stopRouter)
+	c.closeStopRouter()
 	DEBUG.Println(CLI, "disconnected")
 	c.persist.Close()
 }
@@ -555,8 +570,7 @@ func (c *client) Publish(topic string, qos byte, retained bool, payload interfac
 	DEBUG.Println(CLI, "enter Publish")
 	switch {
 	case !c.IsConnected():
-		token.err = ErrNotConnected
-		token.flowComplete()
+		token.setError(ErrNotConnected)
 		return token
 	case c.connectionStatus() == reconnecting && qos == 0:
 		token.flowComplete()
@@ -572,8 +586,7 @@ func (c *client) Publish(topic string, qos byte, retained bool, payload interfac
 	case []byte:
 		pub.Payload = payload.([]byte)
 	default:
-		token.err = errors.New("Unknown payload type")
-		token.flowComplete()
+		token.setError(fmt.Errorf("Unknown payload type"))
 		return token
 	}
 
@@ -597,18 +610,21 @@ func (c *client) Subscribe(topic string, qos byte, callback MessageHandler) Toke
 	token := newToken(packets.Subscribe).(*SubscribeToken)
 	DEBUG.Println(CLI, "enter Subscribe")
 	if !c.IsConnected() {
-		token.err = ErrNotConnected
-		token.flowComplete()
+		token.setError(ErrNotConnected)
 		return token
 	}
 	sub := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 	if err := validateTopicAndQos(topic, qos); err != nil {
-		token.err = err
+		token.setError(err)
 		return token
 	}
 	sub.Topics = append(sub.Topics, topic)
 	sub.Qoss = append(sub.Qoss, qos)
 	DEBUG.Println(CLI, sub.String())
+
+	if strings.HasPrefix(topic, "$share") {
+		topic = strings.Join(strings.Split(topic, "/")[2:], "/")
+	}
 
 	if callback != nil {
 		c.msgRouter.addRoute(topic, callback)
@@ -627,13 +643,12 @@ func (c *client) SubscribeMultiple(filters map[string]byte, callback MessageHand
 	token := newToken(packets.Subscribe).(*SubscribeToken)
 	DEBUG.Println(CLI, "enter SubscribeMultiple")
 	if !c.IsConnected() {
-		token.err = ErrNotConnected
-		token.flowComplete()
+		token.setError(ErrNotConnected)
 		return token
 	}
 	sub := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 	if sub.Topics, sub.Qoss, err = validateSubscribeMap(filters); err != nil {
-		token.err = err
+		token.setError(err)
 		return token
 	}
 
@@ -656,6 +671,9 @@ func (c *client) resume(subscription bool) {
 	storedKeys := c.persist.All()
 	for _, key := range storedKeys {
 		packet := c.persist.Get(key)
+		if packet == nil {
+			continue
+		}
 		details := packet.Details()
 		if isKeyOutbound(key) {
 			switch packet.(type) {
@@ -711,8 +729,7 @@ func (c *client) Unsubscribe(topics ...string) Token {
 	token := newToken(packets.Unsubscribe).(*UnsubscribeToken)
 	DEBUG.Println(CLI, "enter Unsubscribe")
 	if !c.IsConnected() {
-		token.err = ErrNotConnected
-		token.flowComplete()
+		token.setError(ErrNotConnected)
 		return token
 	}
 	unsub := packets.NewControlPacket(packets.Unsubscribe).(*packets.UnsubscribePacket)
