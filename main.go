@@ -4,12 +4,11 @@ import (
 	"path"
 	"sync"
 
-	"github.com/JohannWeging/logerr"
 	"github.com/luzifer/rconfig"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/JohannWeging/avrmqtt/avr"
-	"github.com/JohannWeging/avrmqtt/mqtt"
+	"github.com/yoo/avrmqtt/avr"
+	"github.com/yoo/avrmqtt/mqtt"
 )
 
 var logLock sync.Mutex
@@ -59,8 +58,7 @@ func main() {
 	}
 	broker, err := mqtt.New(mqttOpts)
 	if err != nil {
-		f := logerr.GetFields(err)
-		log.WithFields(f).WithError(err).Fatal("failed to connect to mqtt broker")
+		log.WithError(err).Fatal("failed to connect to mqtt broker")
 	}
 	run(receiver, broker)
 }
@@ -94,6 +92,5 @@ func errLog(err error, msg string) {
 	}
 	logLock.Lock()
 	defer logLock.Unlock()
-	fields := logerr.GetFields(err)
-	log.WithFields(fields).WithError(err).Error(msg)
+	log.WithError(err).Error(msg)
 }

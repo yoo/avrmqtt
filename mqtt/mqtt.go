@@ -1,12 +1,11 @@
 package mqtt
 
 import (
+	"fmt"
 	"path"
 	"time"
 
-	"github.com/JohannWeging/logerr"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/juju/errors"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -42,10 +41,6 @@ func New(opts *Options) (*MQTT, error) {
 	}
 	m.logger = log.WithFields(m.logFields())
 
-	var err error
-	logerr.DeferWithFields(&err, m.logFields())
-	errors.DeferredAnnotatef(&err, "failed to connect to broker")
-
 	co := mqtt.NewClientOptions()
 	co.AddBroker(opts.Broker)
 	co.SetUsername(opts.User)
@@ -57,9 +52,13 @@ func New(opts *Options) (*MQTT, error) {
 	token := m.client.Connect()
 	ok := token.WaitTimeout(10 * time.Second)
 	if !ok {
-		return nil, errors.New("connect timeout")
+		return nil, fmt.Errorf("connect timeout %q", opts.Broker)
+
 	}
-	return m, token.Error()
+	if err := token.Error(); err != nil {
+		return nil, fmt.Errorf("failed to connect to %q: %w", opts.Broker, err)
+	}
+	return m, nil
 }
 
 func (m *MQTT) logFields() map[string]interface{} {
@@ -78,7 +77,7 @@ func (m *MQTT) onConnect(client mqtt.Client) {
 	logger.Debug("subcribe to cmd topic")
 
 	if !token.WaitTimeout(10 * time.Second) {
-		err := errors.New("token timeout")
+		err := fmt.Errorf("token timeout")
 		logger.WithError(err).Error("failed to subscribe to topic: reached timeout")
 		return
 	}
@@ -98,7 +97,7 @@ func (m *MQTT) cmndHandler(client mqtt.Client, msg mqtt.Message) {
 	m.logger.WithFields(log.Fields{
 		"topic":   msg.Topic(),
 		"payload": string(msg.Payload()),
-	}).Debug("recived cmnd msg")
+	}).Debug("recived cmnd msg %q from %q", string(msg.Payload()), msg.Topic())
 
 	m.Events <- &Event{
 		Topic:   msg.Topic(),
@@ -108,23 +107,24 @@ func (m *MQTT) cmndHandler(client mqtt.Client, msg mqtt.Message) {
 
 func (m *MQTT) Publish(endpoint, payload string) (err error) {
 	topic := path.Join("stat", m.opts.Topic, endpoint)
-	logFields := m.logFields()
-	logFields["topic"] = topic
-	logFields["payload"] = payload
-	logerr.DeferWithFields(&err, logFields)
-	errors.DeferredAnnotatef(&err, "failed to publish mqtt msg")
+	defer func() {
+		if err == nil {
+			return
+		}
+		err = fmt.Errorf("failed to publish mqtt msg %q to %q: %s", payload, payload, err)
+	}()
 
 	if !m.client.IsConnected() {
-		return errors.New("not connected")
+		return fmt.Errorf("not connected")
 	}
 
-	m.logger.WithFields(logFields).Debug("publish mqtt msg")
+	m.logger.Debug("publish mqtt msg %q to %q", payload, endpoint)
 
 	token := m.client.Publish(topic, byte(m.opts.QoS), m.opts.Retain, payload)
 
 	ok := token.WaitTimeout(10 * time.Second)
 	if !ok {
-		return errors.New("publish timeout")
+		return fmt.Errorf("publish timeout")
 	}
 
 	return token.Error()

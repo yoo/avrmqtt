@@ -9,8 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JohannWeging/logerr"
-	"github.com/juju/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/ziutek/telnet"
 )
@@ -100,8 +98,7 @@ func (a *AVR) setState() {
 	time.Sleep(3 * time.Second)
 	for key, value := range a.state {
 		if err := a.Command(key, value); err != nil {
-			fields := logerr.GetFields(err)
-			log.WithFields(fields).WithError(err).Error("failed to send telnet command")
+			log.WithError(err).Error("failed to send telnet command")
 		}
 	}
 }
@@ -123,10 +120,7 @@ func (a *AVR) Command(endpoint, payload string) error {
 	a.logger.WithField("cmd", cmd).Debug("send http command")
 	err := get(a.http, a.opts.httpEndpoint, cmd)
 	if err != nil {
-		lf := a.logFields()
-		lf["cmd"] = cmd
-		err = logerr.WithFields(err, lf)
-		return errors.Annotate(err, "failed to send cmd")
+		return fmt.Errorf("failed to send cmd %q: %w", cmd, err)
 	}
 	time.Sleep(100 * time.Millisecond)
 	return nil
@@ -135,12 +129,11 @@ func (a *AVR) Command(endpoint, payload string) error {
 func get(client *http.Client, endpoint string, cmd string) error {
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
-		return errors.Annotate(err, "failed to create request")
+		return fmt.Errorf("failed to create request to %q: %w", endpoint, err)
 	}
 
 	// add the command as empty parameter
 	req.URL.RawQuery = url.QueryEscape(cmd)
 	_, err = client.Do(req)
-	err = logerr.WithField(err, "url", req.URL.String())
-	return errors.Annotate(err, "failed to do request")
+	return fmt.Errorf("failed to do request %q: %w", req.URL.String(), err)
 }
