@@ -15,7 +15,7 @@ docker run -e AVR_HOST=avr.lan \
   -e MQTT_BROKER=tcp://broker.lan \
   -e MQTT_USER=fancypants \
   -e MQTT_PASSWORD=foobar \
-  docker.pkg.github.com/yoo/avrmqtt/avrmqtt:latest
+  quay.io/johannweging/avrmqtt:latest
 ```
 
 Full usage:
