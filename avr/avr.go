@@ -32,11 +32,12 @@ type AVR struct {
 }
 
 type Options struct {
-	Host         string
-	HttpPort     string
-	TelnetPort   string
-	httpEndpoint string
-	telnetHost   string
+	Host              string
+	HttpPort          string
+	TelnetPort        string
+	TelnetCmdInterval int
+	httpEndpoint      string
+	telnetHost        string
 }
 
 func New(opts *Options) *AVR {
@@ -122,7 +123,7 @@ func (a *AVR) Command(endpoint, payload string) error {
 	if err != nil {
 		return fmt.Errorf("failed to send cmd %q: %w", cmd, err)
 	}
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(time.Duration(a.opts.TelnetCmdInterval) * time.Millisecond)
 	return nil
 }
 
