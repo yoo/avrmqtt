@@ -123,6 +123,7 @@ func (a *AVR) Command(endpoint, payload string) error {
 	if err != nil {
 		return fmt.Errorf("failed to send cmd %q: %w", cmd, err)
 	}
+	a.logger.WithField("intervall", a.opts.TelnetCmdInterval).Debug("timeout")
 	time.Sleep(time.Duration(a.opts.TelnetCmdInterval) * time.Millisecond)
 	return nil
 }
@@ -136,5 +137,8 @@ func get(client *http.Client, endpoint string, cmd string) error {
 	// add the command as empty parameter
 	req.URL.RawQuery = url.QueryEscape(cmd)
 	_, err = client.Do(req)
-	return fmt.Errorf("failed to do request %q: %w", req.URL.String(), err)
+	if err != nil {
+		return fmt.Errorf("failed to do request %q: %w", req.URL.String(), err)
+	}
+	return nil
 }

@@ -16,7 +16,7 @@ var conf = struct {
 	AVRHost              string `flag:"avr-host" default:"avr" description:"denon avr host name"`
 	AVRHTTPPort          string `flag:"avr-http-port" env:"AVR_HTTP_PORT" default:"80" description:"denon avr telnet port"`
 	AVRTelnetPort        string `flag:"avr-telnet-port" default:"23" description:"denon avr telnet port"`
-	AVRTelnetCmdInterval int    `flag:"avr-telnet-cmd-interval" default:"200" description:"time to wait between telnet commands in milliseconds"`
+	AVRTelnetCmdInterval int    `flag:"avr-telnet-cmd-interval" default:"100" description:"time to wait between telnet commands in milliseconds"`
 
 	MQTTBroker   string `flag:"mqtt-broker" description:"mqtt host name"`
 	MQTTUser     string `flag:"mqtt-user" description:"mqtt user name"`
