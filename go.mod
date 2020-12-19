@@ -11,6 +11,8 @@ require (
 	github.com/sirupsen/logrus v1.7.0
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/ziutek/telnet v0.0.0-20180329124119-c3b780dc415b
-	gopkg.in/validator.v2 v2.0.0-20191107172027-c3144fdedc21 // indirect
-	gopkg.in/yaml.v2 v2.2.8 // indirect
+	golang.org/x/net v0.0.0-20201216054612-986b41b23924 // indirect
+	golang.org/x/sys v0.0.0-20201218084310-7d0127a74742 // indirect
+	gopkg.in/validator.v2 v2.0.0-20200605151824-2b28d334fa05 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
