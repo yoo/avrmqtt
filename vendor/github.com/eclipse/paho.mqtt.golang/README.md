@@ -107,7 +107,7 @@ identifier; this is as per the [spec](https://docs.oasis-open.org/mqtt/mqtt/v3.1
 * A `MessageHandler` (called when a new message is received) must not block. If you wish to perform a long-running task,
 or publish a message, then please use a go routine (blocking in the handler is a common cause of unexpected `pingresp 
 not received, disconnecting` errors). 
-* When subscribing at QOS2 with `CleanSession` set to false it is possible that the broker will deliver retained 
+* When QOS1+ subscriptions have been created previously and you connect with `CleanSession` set to false it is possible that the broker will deliver retained 
 messages before `Subscribe` can be called. To process these messages either configure a handler with `AddRoute` or
 set a `DefaultPublishHandler`.
 * Loss of network connectivity may not be detected immediately. If this is an issue then consider setting 
@@ -128,13 +128,14 @@ We welcome bug reports, but it is important they are actionable. A significant p
 resolved due to a lack of information. If we cannot replicate the problem then it is unlikely we will be able to fix it. 
 The information required will vary from issue to issue but consider including:  
 
+* Which version of the package you are using (tag or commit - this should be in your go.mod file)
 * A [Minimal, Reproducible Example](https://stackoverflow.com/help/minimal-reproducible-example). Providing an example 
 is the best way to demonstrate the issue you are facing; it is important this includes all relevant information
 (including broker configuration). Docker (see `cmd/docker`) makes it relatively simple to provide a working end-to-end 
 example.
 * A full, clear, description of the problem (detail what you are expecting vs what actually happens).
 * Details of your attempts to resolve the issue (what have you tried, what worked, what did not).
-* [Application Logs](#logging) covering the period the issue occurred.
+* [Application Logs](#logging) covering the period the issue occurred. Unless you have isolated the root cause of the issue please include a link to a full log (including data from well before the problem arose).
 * Broker Logs covering the period the issue occurred.
 
 It is important to remember that this library does not stand alone; it communicates with a broker and any issues you are 
@@ -146,7 +147,7 @@ seeing may be due to:
 * Bugs in the broker.
 * Issues with whatever you are communicating with.
 
-When submitting an issue please ensure that you provide sufficient details to enable us to eliminate causes outside of
+When submitting an issue, please ensure that you provide sufficient details to enable us to eliminate causes outside of
 this library.
 
 Contributing

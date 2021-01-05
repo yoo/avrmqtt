@@ -100,13 +100,13 @@ type client struct {
 	lastReceived    atomic.Value // time.Time - the last time a packet was successfully received from network
 	pingOutstanding int32        // set to 1 if a ping has been sent but response not ret received
 
-	status       uint32 // see consts at top of file for possible values
+	status       uint32 // see const definitions at top of file for possible values
 	sync.RWMutex        // Protects the above two variables (note: atomic writes are also used somewhat inconsistently)
 
 	messageIds // effectively a map from message id to token completor
 
 	obound    chan *PacketAndToken // outgoing publish packet
-	oboundP   chan *PacketAndToken // outgoing 'priotity' packet (anything other than publish)
+	oboundP   chan *PacketAndToken // outgoing 'priority' packet (anything other than publish)
 	msgRouter *router              // routes topics to handlers
 	persist   Store
 	options   ClientOptions
@@ -206,8 +206,8 @@ func (c *client) setConnected(status uint32) {
 	atomic.StoreUint32(&c.status, status)
 }
 
-//ErrNotConnected is the error returned from function calls that are
-//made when the client is not connected to a broker
+// ErrNotConnected is the error returned from function calls that are
+// made when the client is not connected to a broker
 var ErrNotConnected = errors.New("not Connected")
 
 // Connect will create a connection to the message broker, by default
@@ -215,7 +215,7 @@ var ErrNotConnected = errors.New("not Connected")
 // fails
 // Note: If using QOS1+ and CleanSession=false it is advisable to add
 // routes (or a DefaultPublishHandler) prior to calling Connect()
-// because queued messages may be delivered immediatly post connection
+// because queued messages may be delivered immediately post connection
 func (c *client) Connect() Token {
 	t := newToken(packets.Connect).(*ConnectToken)
 	DEBUG.Println(CLI, "Connect()")
@@ -263,7 +263,7 @@ func (c *client) Connect() Token {
 			t.setError(err)
 			return
 		}
-		inboundFromStore := make(chan packets.ControlPacket) // there may be some inbound comms packets in the store that are awaitring processing
+		inboundFromStore := make(chan packets.ControlPacket) // there may be some inbound comms packets in the store that are awaiting processing
 		if c.startCommsWorkers(conn, inboundFromStore) {
 			// Take care of any messages in the store
 			if !c.options.CleanSession {
@@ -286,7 +286,7 @@ func (c *client) Connect() Token {
 func (c *client) reconnect() {
 	DEBUG.Println(CLI, "enter reconnect")
 	var (
-		sleep = time.Duration(1 * time.Second)
+		sleep = 1 * time.Second
 		conn  net.Conn
 	)
 
@@ -323,7 +323,7 @@ func (c *client) reconnect() {
 		return
 	}
 
-	inboundFromStore := make(chan packets.ControlPacket) // there may be some inbound comms packets in the store that are awaitring processing
+	inboundFromStore := make(chan packets.ControlPacket) // there may be some inbound comms packets in the store that are awaiting processing
 	if c.startCommsWorkers(conn, inboundFromStore) {
 		c.resume(c.options.ResumeSubs, inboundFromStore)
 	}
@@ -391,7 +391,7 @@ func (c *client) attemptConnection() (net.Conn, byte, bool, error) {
 		// Maintain same error format as used previously
 		if rc != packets.ErrNetworkError { // mqtt error
 			err = packets.ConnErrors[rc]
-		} else { // network error (if this occured in ConnectMQTT then err will be nil)
+		} else { // network error (if this occurred in ConnectMQTT then err will be nil)
 			err = fmt.Errorf("%s : %s", packets.ConnErrors[rc], err)
 		}
 	}
@@ -438,7 +438,8 @@ func (c *client) forceDisconnect() {
 func (c *client) disconnect() {
 	done := c.stopCommsWorkers()
 	if done != nil {
-		<-done // Wait until the disconect is complete (to limit chance that another connection will be started)
+		<-done // Wait until the disconnect is complete (to limit chance that another connection will be started)
+		DEBUG.Println(CLI, "forcefully disconnecting")
 		c.messageIds.cleanUp()
 		DEBUG.Println(CLI, "disconnected")
 		c.persist.Close()
@@ -475,7 +476,7 @@ func (c *client) internalConnLost(err error) {
 	}
 }
 
-// startCommsWorkers is called when the connection is up. It starts off all of the routines needed to process incomming and
+// startCommsWorkers is called when the connection is up. It starts off all of the routines needed to process incoming and
 // outgoing messages.
 // Returns true if the comms workers were started (i.e. they were not already running)
 func (c *client) startCommsWorkers(conn net.Conn, inboundFromStore <-chan packets.ControlPacket) bool {
@@ -498,12 +499,11 @@ func (c *client) startCommsWorkers(conn net.Conn, inboundFromStore <-chan packet
 		go keepalive(c, conn)
 	}
 
+	// matchAndDispatch will process messages received from the network. It may generate acknowledgements
+	// It will complete when incomingPubChan is closed and will close ackOut prior to exiting
 	incomingPubChan := make(chan *packets.PublishPacket)
-	c.workers.Add(1)
-	go func() {
-		c.msgRouter.matchAndDispatch(incomingPubChan, c.options.Order, c)
-		c.workers.Done()
-	}()
+	c.workers.Add(1) // Done will be called when ackOut is closed
+	ackOut := c.msgRouter.matchAndDispatch(incomingPubChan, c.options.Order, c)
 
 	c.setConnected(connected)
 	DEBUG.Println(CLI, "client is connected/reconnected")
@@ -514,9 +514,9 @@ func (c *client) startCommsWorkers(conn net.Conn, inboundFromStore <-chan packet
 	// c.oboundP and c.obound need to stay active for the life of the client because, depending upon the options,
 	// messages may be published while the client is disconnected (they will block unless in a goroutine). However
 	// to keep the comms routines clean we want to shutdown the input messages it uses so create out own channels
-	// and copy data accross.
+	// and copy data across.
 	commsobound := make(chan *PacketAndToken)  // outgoing publish packets
-	commsoboundP := make(chan *PacketAndToken) // outgoing 'priotity' packet
+	commsoboundP := make(chan *PacketAndToken) // outgoing 'priority' packet
 	c.workers.Add(1)
 	go func() {
 		defer c.workers.Done()
@@ -526,28 +526,42 @@ func (c *client) startCommsWorkers(conn net.Conn, inboundFromStore <-chan packet
 				commsoboundP <- msg
 			case msg := <-c.obound:
 				commsobound <- msg
+			case msg, ok := <-ackOut:
+				if !ok {
+					ackOut = nil     // ignore channel going forward
+					c.workers.Done() // matchAndDispatch has completed
+					continue         // await next message
+				}
+				commsoboundP <- msg
 			case <-c.stop:
+				// Attempt to transmit any outstanding acknowledgements (this may well fail but should work if this is a clean disconnect)
+				if ackOut != nil {
+					for msg := range ackOut {
+						commsoboundP <- msg
+					}
+					c.workers.Done() // matchAndDispatch has completed
+				}
 				close(commsoboundP) // Nothing sending to these channels anymore so close them and allow comms routines to exit
 				close(commsobound)
-				DEBUG.Println(CLI, "startCommsWorkers output redirector finnished")
+				DEBUG.Println(CLI, "startCommsWorkers output redirector finished")
 				return
 			}
 		}
 	}()
 
-	commsIncommingPub, commsErrors := startComms(c.conn, c, inboundFromStore, commsoboundP, commsobound)
+	commsIncomingPub, commsErrors := startComms(c.conn, c, inboundFromStore, commsoboundP, commsobound)
 	c.commsStopped = make(chan struct{})
 	go func() {
 		for {
-			if commsIncommingPub == nil && commsErrors == nil {
+			if commsIncomingPub == nil && commsErrors == nil {
 				break
 			}
 			select {
-			case pub, ok := <-commsIncommingPub:
+			case pub, ok := <-commsIncomingPub:
 				if !ok {
-					// Incomming comms has shutdown
+					// Incoming comms has shutdown
 					close(incomingPubChan) // stop the router
-					commsIncommingPub = nil
+					commsIncomingPub = nil
 					continue
 				}
 				incomingPubChan <- pub
@@ -561,7 +575,7 @@ func (c *client) startCommsWorkers(conn net.Conn, inboundFromStore <-chan packet
 				continue
 			}
 		}
-		DEBUG.Println(CLI, "comms goroutine done")
+		DEBUG.Println(CLI, "incoming comms goroutine done")
 		close(c.commsStopped)
 	}()
 	DEBUG.Println(CLI, "startCommsWorkers done")
@@ -582,7 +596,7 @@ func (c *client) stopCommsWorkers() chan struct{} {
 	}
 
 	// It is important that everything is stopped in the correct order to avoid deadlocks. The main issue here is
-	// the router because it both receives incomming publish messages and also sends outgoing acknowledgements. To
+	// the router because it both receives incoming publish messages and also sends outgoing acknowledgements. To
 	// avoid issues we signal the workers to stop and close the connection (it is probably already closed but
 	// there is no harm in being sure). We can then wait for the workers to finnish before closing outbound comms
 	// channels which will allow the comms routines to exit.
@@ -591,7 +605,7 @@ func (c *client) stopCommsWorkers() chan struct{} {
 	close(c.stop)     // Signal for workers to stop
 	c.conn.Close()    // Possible that this is already closed but no harm in closing again
 	c.conn = nil      // Important that this is the only place that this is set to nil
-	c.connMu.Unlock() // As the conection is now nil we can unlock the mu (allowing subsequent calls to exit immediately)
+	c.connMu.Unlock() // As the connection is now nil we can unlock the mu (allowing subsequent calls to exit immediately)
 
 	doneChan := make(chan struct{})
 
@@ -999,8 +1013,8 @@ func (c *client) OptionsReader() ClientOptionsReader {
 	return r
 }
 
-//DefaultConnectionLostHandler is a definition of a function that simply
-//reports to the DEBUG log the reason for the client losing a connection.
+// DefaultConnectionLostHandler is a definition of a function that simply
+// reports to the DEBUG log the reason for the client losing a connection.
 func DefaultConnectionLostHandler(client Client, reason error) {
 	DEBUG.Println("Connection lost:", reason.Error())
 }
