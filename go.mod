@@ -4,7 +4,7 @@ go 1.13
 
 require (
 	github.com/Luzifer/rconfig v2.2.0+incompatible // indirect
-	github.com/eclipse/paho.mqtt.golang v1.3.1
+	github.com/eclipse/paho.mqtt.golang v1.3.2
 	github.com/luzifer/rconfig v2.2.0+incompatible
 	github.com/onsi/ginkgo v1.10.3 // indirect
 	github.com/onsi/gomega v1.7.1 // indirect
