@@ -5,7 +5,10 @@ github.com/eclipse/paho.mqtt.golang/packets
 github.com/gorilla/websocket
 # github.com/luzifer/rconfig v2.2.0+incompatible
 github.com/luzifer/rconfig
-# github.com/sirupsen/logrus v1.7.0
+# github.com/magefile/mage v1.10.0
+github.com/magefile/mage/mg
+github.com/magefile/mage/sh
+# github.com/sirupsen/logrus v1.8.0
 github.com/sirupsen/logrus
 # github.com/spf13/pflag v1.0.5
 github.com/spf13/pflag
