@@ -55,6 +55,8 @@ const (
 // information can be found in their respective documentation.
 // Numerous connection options may be specified by configuring a
 // and then supplying a ClientOptions type.
+// Implementations of Client must be safe for concurrent use by multiple
+// goroutines
 type Client interface {
 	// IsConnected returns a bool signifying whether
 	// the client is connected or not.
@@ -75,11 +77,21 @@ type Client interface {
 	// Returns a token to track delivery of the message to the broker
 	Publish(topic string, qos byte, retained bool, payload interface{}) Token
 	// Subscribe starts a new subscription. Provide a MessageHandler to be executed when
-	// a message is published on the topic provided, or nil for the default handler
+	// a message is published on the topic provided, or nil for the default handler.
+	//
+	// If options.OrderMatters is true (the default) then callback must not block or
+	// call functions within this package that may block (e.g. Publish) other than in
+	// a new go routine.
+	// callback must be safe for concurrent use by multiple goroutines.
 	Subscribe(topic string, qos byte, callback MessageHandler) Token
 	// SubscribeMultiple starts a new subscription for multiple topics. Provide a MessageHandler to
 	// be executed when a message is published on one of the topics provided, or nil for the
-	// default handler
+	// default handler.
+	//
+	// If options.OrderMatters is true (the default) then callback must not block or
+	// call functions within this package that may block (e.g. Publish) other than in
+	// a new go routine.
+	// callback must be safe for concurrent use by multiple goroutines.
 	SubscribeMultiple(filters map[string]byte, callback MessageHandler) Token
 	// Unsubscribe will end the subscription from each of the topics provided.
 	// Messages published to those topics from other clients will no longer be
@@ -87,7 +99,13 @@ type Client interface {
 	Unsubscribe(topics ...string) Token
 	// AddRoute allows you to add a handler for messages on a specific topic
 	// without making a subscription. For example having a different handler
-	// for parts of a wildcard subscription
+	// for parts of a wildcard subscription or for receiving retained messages
+	// upon connection (before Sub scribe can be processed).
+	//
+	// If options.OrderMatters is true (the default) then callback must not block or
+	// call functions within this package that may block (e.g. Publish) other than in
+	// a new go routine.
+	// callback must be safe for concurrent use by multiple goroutines.
 	AddRoute(topic string, callback MessageHandler)
 	// OptionsReader returns a ClientOptionsReader which is a copy of the clientoptions
 	// in use by the client.
@@ -95,6 +113,8 @@ type Client interface {
 }
 
 // client implements the Client interface
+// clients are safe for concurrent use by multiple
+// goroutines
 type client struct {
 	lastSent        atomic.Value // time.Time - the last time a packet was successfully sent to network
 	lastReceived    atomic.Value // time.Time - the last time a packet was successfully received from network
@@ -153,6 +173,11 @@ func NewClient(o *ClientOptions) Client {
 // AddRoute allows you to add a handler for messages on a specific topic
 // without making a subscription. For example having a different handler
 // for parts of a wildcard subscription
+//
+// If options.OrderMatters is true (the default) then callback must not block or
+// call functions within this package that may block (e.g. Publish) other than in
+// a new go routine.
+// callback must be safe for concurrent use by multiple goroutines.
 func (c *client) AddRoute(topic string, callback MessageHandler) {
 	if callback != nil {
 		c.msgRouter.addRoute(topic, callback)
@@ -459,10 +484,13 @@ func (c *client) internalConnLost(err error) {
 			DEBUG.Println(CLI, "internalConnLost waiting on workers")
 			<-stopDone
 			DEBUG.Println(CLI, "internalConnLost workers stopped")
-			if c.options.CleanSession && !c.options.AutoReconnect {
+			// It is possible that Disconnect was called which led to this error so reconnection depends upon status
+			reconnect := c.options.AutoReconnect && c.connectionStatus() > connecting
+
+			if c.options.CleanSession && !reconnect {
 				c.messageIds.cleanUp()
 			}
-			if c.options.AutoReconnect {
+			if reconnect {
 				c.setConnected(reconnecting)
 				go c.reconnect()
 			} else {
@@ -686,10 +714,10 @@ func (c *client) Publish(topic string, qos byte, retained bool, payload interfac
 // Subscribe starts a new subscription. Provide a MessageHandler to be executed when
 // a message is published on the topic provided.
 //
-// Please note: you should try to keep the execution time of the callback to be
-// as low as possible, especially when SetOrderMatters(true) (the default) is in
-// place. Blocking calls in message handlers might otherwise delay delivery to
-// other message handlers.
+// If options.OrderMatters is true (the default) then callback must not block or
+// call functions within this package that may block (e.g. Publish) other than in
+// a new go routine.
+// callback must be safe for concurrent use by multiple goroutines.
 func (c *client) Subscribe(topic string, qos byte, callback MessageHandler) Token {
 	token := newToken(packets.Subscribe).(*SubscribeToken)
 	DEBUG.Println(CLI, "enter Subscribe")
@@ -766,6 +794,11 @@ func (c *client) Subscribe(topic string, qos byte, callback MessageHandler) Toke
 
 // SubscribeMultiple starts a new subscription for multiple topics. Provide a MessageHandler to
 // be executed when a message is published on one of the topics provided.
+//
+// If options.OrderMatters is true (the default) then callback must not block or
+// call functions within this package that may block (e.g. Publish) other than in
+// a new go routine.
+// callback must be safe for concurrent use by multiple goroutines.
 func (c *client) SubscribeMultiple(filters map[string]byte, callback MessageHandler) Token {
 	var err error
 	token := newToken(packets.Subscribe).(*SubscribeToken)
@@ -869,7 +902,7 @@ func (c *client) resume(subscription bool, ibound chan packets.ControlPacket) {
 		}
 		details := packet.Details()
 		if isKeyOutbound(key) {
-			switch packet.(type) {
+			switch p := packet.(type) {
 			case *packets.SubscribePacket:
 				if subscription {
 					DEBUG.Println(STR, fmt.Sprintf("loaded pending subscribe (%d)", details.MessageID))
@@ -909,13 +942,22 @@ func (c *client) resume(subscription bool, ibound chan packets.ControlPacket) {
 					return
 				}
 			case *packets.PublishPacket:
+				// spec: If the DUP flag is set to 0, it indicates that this is the first occasion that the Client or
+				// Server has attempted to send this MQTT PUBLISH Packet. If the DUP flag is set to 1, it indicates that
+				// this might be re-delivery of an earlier attempt to send the Packet.
+				//
+				// If the message is in the store than an attempt at delivery has been made (note that the message may
+				// never have made it onto the wire but tracking that would be complicated!).
+				if p.Qos != 0 { // spec: The DUP flag MUST be set to 0 for all QoS 0 messages
+					p.Dup = true
+				}
 				token := newToken(packets.Publish).(*PublishToken)
 				token.messageID = details.MessageID
 				c.claimID(token, details.MessageID)
 				DEBUG.Println(STR, fmt.Sprintf("loaded pending publish (%d)", details.MessageID))
 				DEBUG.Println(STR, details)
 				select {
-				case c.obound <- &PacketAndToken{p: packet, t: token}:
+				case c.obound <- &PacketAndToken{p: p, t: token}:
 				case <-c.stop:
 					DEBUG.Println(STR, "resume exiting due to stop")
 					return
