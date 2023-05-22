@@ -5,7 +5,7 @@ github.com/eclipse/paho.mqtt.golang/packets
 github.com/gorilla/websocket
 # github.com/luzifer/rconfig v2.2.0+incompatible
 github.com/luzifer/rconfig
-# github.com/sirupsen/logrus v1.8.1
+# github.com/sirupsen/logrus v1.9.2
 github.com/sirupsen/logrus
 # github.com/spf13/pflag v1.0.5
 github.com/spf13/pflag
@@ -14,7 +14,7 @@ github.com/ziutek/telnet
 # golang.org/x/net v0.0.0-20210415231046-e915ea6b2b7d
 golang.org/x/net/internal/socks
 golang.org/x/net/proxy
-# golang.org/x/sys v0.0.0-20210415045647-66c3f260301c
+# golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
